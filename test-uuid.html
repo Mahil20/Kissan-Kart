@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test UUID Generation</title>
+</head>
+<body>
+    <h1>UUID Generation Test</h1>
+    <button onclick="testUUID()">Generate UUID</button>
+    <div id="result"></div>
+
+    <script>
+        // Same function as in mock-auth.ts
+        const generateUUID = () => {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                console.log('Using crypto.randomUUID');
+                return crypto.randomUUID();
+            }
+            // Fallback UUID generation
+            console.log('Using fallback UUID generation');
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+
+        function testUUID() {
+            try {
+                const uuid = generateUUID();
+                document.getElementById('result').innerHTML = `
+                    <p><strong>Success!</strong></p>
+                    <p>Generated UUID: ${uuid}</p>
+                    <p>Crypto available: ${typeof crypto !== 'undefined'}</p>
+                    <p>crypto.randomUUID available: ${typeof crypto !== 'undefined' && !!crypto.randomUUID}</p>
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
