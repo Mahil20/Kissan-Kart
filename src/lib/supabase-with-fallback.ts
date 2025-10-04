@@ -4,8 +4,8 @@ import { mockAuth } from './mock-auth';
 import { Vendor, Product, UserProfile } from '@/types';
 
 // Supabase configuration
-const supabaseUrl = "https://fxdeecqfkabeqsihspyo.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4ZGVlY3Fma2FiZXFzaWhzcHlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc4OTQwNTYsImV4cCI6MjA1MzQ3MDA1Nn0.wZ8YjKz9rLpQXeN5vH7uI2A6-kM3dS1fG8cP4xR0Y9T";
+const supabaseUrl = "https://nuubqqarsppmhetzqoml.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51dWJxcWFyc3BwbWhldHpxb21sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MDc3MjAsImV4cCI6MjA3NDQ4MzcyMH0.Q0PD_w5PU8CvTVniuEEv5a29TtoW0HXYgpNvn06e4Ac";
 
 let supabaseClient: any = null;
 let usesMockAuth = false;

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Supabase Auth</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .test { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        button { margin: 10px 5px; padding: 10px 20px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Supabase Auth Debug Tool</h1>
+    
+    <div id="results"></div>
+    
+    <div class="test">
+        <h2>Quick Test</h2>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="testSignUp()">Test Sign Up</button>
+        <button onclick="testSignIn()">Test Sign In</button>
+    </div>
+
+    <script>
+        // PASTE YOUR CREDENTIALS HERE
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+        const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        function log(title, content, type = 'info') {
+            const results = document.getElementById('results');
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            results.innerHTML += `
+                <div class="test ${className}">
+                    <h3>${title}</h3>
+                    <pre>${typeof content === 'object' ? JSON.stringify(content, null, 2) : content}</pre>
+                </div>
+            `;
+        }
+
+        async function runAllTests() {
+            document.getElementById('results').innerHTML = '';
+            
+            // Test 1: Check credentials
+            log('Test 1: Credentials Check', `
+URL: ${SUPABASE_URL}
+Key: ${SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.substring(0, 30) + '...' : 'MISSING'}
+            `, SUPABASE_URL && SUPABASE_ANON_KEY ? 'success' : 'error');
+            
+            // Test 2: Connection test
+            log('Test 2: Testing Connection...', 'Attempting to connect...', 'info');
+            try {
+                const { data, error } = await Promise.race([
+                    supabase.auth.getSession(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout after 10 seconds')), 10000))
+                ]);
+                
+                if (error) {
+                    log('Test 2: Connection Result', `ERROR: ${error.message}`, 'error');
+                } else {
+                    log('Test 2: Connection Result', '✅ Successfully connected to Supabase!', 'success');
+                }
+            } catch (err) {
+                log('Test 2: Connection Result', `❌ ${err.message}\n\nThis means:\n1. Supabase project might be paused\n2. Wrong credentials\n3. Network/firewall issue`, 'error');
+            }
+            
+            // Test 3: Check RLS
+            log('Test 3: Testing Database Access...', 'Checking if we can read profiles table...', 'info');
+            try {
+                const { data, error } = await supabase.from('profiles').select('count').limit(1);
+                if (error) {
+                    log('Test 3: Database Access', `ERROR: ${error.message}\n\nThis might be RLS blocking access.`, 'error');
+                } else {
+                    log('Test 3: Database Access', '✅ Can access database!', 'success');
+                }
+            } catch (err) {
+                log('Test 3: Database Access', `❌ ${err.message}`, 'error');
+            }
+        }
+
+        async function testSignUp() {
+            document.getElementById('results').innerHTML = '';
+            log('Sign Up Test', 'Attempting to sign up...', 'info');
+            
+            const email = `test${Date.now()}@test.com`;
+            const password = 'TestPass123!';
+            
+            try {
+                const { data, error } = await Promise.race([
+                    supabase.auth.signUp({
+                        email: email,
+                        password: password,
+                        options: {
+                            data: { role: 'user', full_name: 'Test User' }
+                        }
+                    }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout after 30 seconds')), 30000))
+                ]);
+                
+                if (error) {
+                    log('Sign Up Result', `❌ ERROR: ${error.message}`, 'error');
+                } else {
+                    log('Sign Up Result', `✅ Success!\nUser ID: ${data.user?.id}\nEmail: ${data.user?.email}`, 'success');
+                }
+            } catch (err) {
+                log('Sign Up Result', `❌ ${err.message}`, 'error');
+            }
+        }
+
+        async function testSignIn() {
+            document.getElementById('results').innerHTML = '';
+            const email = prompt('Enter test email:');
+            const password = prompt('Enter test password:');
+            
+            if (!email || !password) {
+                log('Sign In Test', 'Cancelled', 'error');
+                return;
+            }
+            
+            log('Sign In Test', 'Attempting to sign in...', 'info');
+            
+            try {
+                const { data, error } = await Promise.race([
+                    supabase.auth.signInWithPassword({ email, password }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout after 30 seconds')), 30000))
+                ]);
+                
+                if (error) {
+                    log('Sign In Result', `❌ ERROR: ${error.message}`, 'error');
+                } else {
+                    log('Sign In Result', `✅ Success!\nUser ID: ${data.user?.id}\nEmail: ${data.user?.email}\nRole: ${data.user?.user_metadata?.role}`, 'success');
+                }
+            } catch (err) {
+                log('Sign In Result', `❌ ${err.message}`, 'error');
+            }
+        }
+
+        // Auto-run tests on load
+        setTimeout(() => {
+            if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') {
+                log('⚠️ Setup Required', 'Please edit this file and replace:\n- YOUR_SUPABASE_URL_HERE\n- YOUR_ANON_KEY_HERE\n\nWith your actual Supabase credentials from the .env file.', 'error');
+            } else {
+                runAllTests();
+            }
+        }, 500);
+    </script>
+</body>
+</html>

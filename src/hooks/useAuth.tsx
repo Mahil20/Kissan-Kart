@@ -1,7 +1,10 @@
+
+
+
 import { useState, useEffect, createContext, useContext, useMemo } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase-with-fallback';
+import { supabase } from '@/lib/supabase-client';
 import { UserProfile, UserRole } from '@/types';
 import { toast } from 'sonner';
 
@@ -29,13 +32,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Set up initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
       
       if (session?.user) {
-        // Fetch the user profile data and combine with session user
         fetchUserProfile(session.user.id).then((profileData) => {
           if (profileData) {
             setUser({
@@ -49,7 +50,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session);
@@ -77,7 +77,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  // Function to fetch user profile data
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -94,23 +93,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
   
-  // Function to refresh user data - can be called after role changes
   const refreshUserData = async () => {
     try {
       setLoading(true);
       
-      // Get current session
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       
       if (session?.user) {
-        // Force refresh the session to get latest metadata
         await supabase.auth.refreshSession();
         
-        // Get fresh profile data
         const profileData = await fetchUserProfile(session.user.id);
         
-        // Get updated session after refresh
         const { data: refreshData } = await supabase.auth.getSession();
         const refreshedSession = refreshData.session;
         
@@ -143,12 +137,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       setError(null);
       
-      console.log('Attempting to sign in with:', { email }); // Do not log password
+      console.log('Attempting to sign in with:', { email });
       
-      const { data, error } = await supabase.auth.signIn(email, password);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout - please check your internet connection and Supabase configuration')), 30000)
+      );
+      
+      const signInPromise = supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      const { data, error } = await Promise.race([signInPromise, timeoutPromise]) as any;
 
       if (error) {
-        // Handle specific error cases
         if (error.message.includes('Email not confirmed')) {
           toast.error('Please check your email and confirm your account before signing in.');
         } else {
@@ -160,18 +162,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('Sign in successful:', data.user?.id);
       toast.success('Signed in successfully');
       
-      // Redirect based on user role
-      if (data.user?.user_metadata?.role === 'admin') {
+      const userRole = data.user?.user_metadata?.role;
+      if (userRole === 'admin') {
         navigate('/admin');
-      } else if (data.user?.user_metadata?.role === 'vendor') {
+      } else if (userRole === 'vendor') {
         navigate('/vendor/dashboard');
       } else {
         navigate('/profile');
       }
     } catch (error: unknown) {
       console.error('Sign in error:', error);
-      setError(error instanceof Error ? error : new Error('Unknown sign in error'));
-      // Error is already handled with toast above
+      const err = error instanceof Error ? error : new Error('Unknown sign in error');
+      setError(err);
+      
+      if (err.message.includes('timeout') || err.message.includes('Failed to fetch')) {
+        toast.error('Connection error. Please check: 1) Internet connection, 2) Supabase credentials in .env file');
+      }
     } finally {
       setLoading(false);
     }
@@ -182,18 +188,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       setError(null);
       
-      console.log('Attempting to sign up with:', { email, role }); // Do not log password
-      
       console.log('Starting signup process...', { email, role });
       
-      // Check if we're online first
       if (!navigator.onLine) {
         throw new Error('Network error: You appear to be offline. Please check your internet connection and try again.');
       }
       
       console.log('Network check passed, calling Supabase...');
       
-      const { data, error } = await supabase.auth.signUp(email, password, role);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout - please check your internet connection and Supabase configuration')), 30000)
+      );
+      
+      const signUpPromise = supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role,
+            full_name: email.split('@')[0]
+          }
+        }
+      });
+      
+      const { data, error } = await Promise.race([signUpPromise, timeoutPromise]) as any;
 
       console.log('Supabase response:', { data, error });
 
@@ -201,19 +219,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       console.log('Sign up successful, verification email sent');
       toast.success('Signed up successfully! Please check your email for confirmation.');
-      
-      // Show additional message about email confirmation
       toast.info('You must confirm your email before you can sign in.');
       
-      // For demo purposes, we won't auto sign in and redirect
-      // since email confirmation is required
     } catch (error: unknown) {
       console.error('Sign up error:', error);
       const errorObj = error instanceof Error ? error : new Error('Unknown sign up error');
       setError(errorObj);
       
-      if (errorObj.message.includes('Failed to fetch') || errorObj.message.includes('Network')) {
-        toast.error('Network error: Unable to connect to authentication service. Please check your internet connection and try again.');
+      if (errorObj.message.includes('Failed to fetch') || errorObj.message.includes('Network') || errorObj.message.includes('timeout')) {
+        toast.error('Connection error. Please check: 1) Internet connection, 2) Supabase credentials in .env file');
       } else {
         toast.error(errorObj.message || 'Failed to sign up');
       }
@@ -239,14 +253,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // We need to check both user_metadata.role and the profile.role field
-  // Add more verbose checking to help debug role issues
   const isAdmin = useMemo(() => {
     const fromMetadata = user?.user_metadata?.role === 'admin';
     const fromProfile = user?.role === 'admin';
-    const result = Boolean(fromMetadata || fromProfile);
-    // console.log('ADMIN CHECK (memoized):', { fromMetadata, fromProfile, result, user });
-    return result;
+    return Boolean(fromMetadata || fromProfile);
   }, [user]);
 
   const isVendor = useMemo(() => (
@@ -257,7 +267,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     Boolean(user?.user_metadata?.role === 'pending_vendor' || user?.role === 'pending_vendor')
   ), [user]);
 
-  // Log role information for debugging
   useEffect(() => {
     if (user) {
       console.log('AUTH DEBUG - User role information:', { 
@@ -268,19 +277,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         isAdminComputed: isAdmin,
         isVendorComputed: isVendor,
         isPendingVendorComputed: isPendingVendor
-      });
-    }
-  }, [user, isAdmin, isVendor, isPendingVendor]);
-  
-  // Debug log to help troubleshoot role issues
-  useEffect(() => {
-    if (user) {
-      console.log('Current user role check:', { 
-        fromMetadata: user?.user_metadata?.role, 
-        fromProfile: user?.role,
-        isAdmin,
-        isVendor,
-        isPendingVendor
       });
     }
   }, [user, isAdmin, isVendor, isPendingVendor]);

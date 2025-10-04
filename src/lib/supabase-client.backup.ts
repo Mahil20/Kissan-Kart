@@ -2,53 +2,16 @@ import { createClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { Vendor, Product, UserProfile } from '@/types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Hardcoded Supabase configuration for direct project usage
+const supabaseUrl = "https://nuubqqarsppmhetzqoml.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51dWJxcWFyc3BwbWhldHpxb21sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MDc3MjAsImV4cCI6MjA3NDQ4MzcyMH0.Q0PD_w5PU8CvTVniuEEv5a29TtoW0HXYgpNvn06e4Ac";
 
-console.log('🔧 Supabase Configuration:');
-console.log('URL:', supabaseUrl || '❌ MISSING');
-console.log('Anon Key:', supabaseAnonKey ? '✅ Present' : '❌ MISSING');
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  const errorMsg = `
-    ❌ Supabase credentials missing!
-    
-    Please check your .env file:
-    - VITE_SUPABASE_URL=${supabaseUrl || 'MISSING'}
-    - VITE_SUPABASE_ANON_KEY=${supabaseAnonKey ? 'Present' : 'MISSING'}
-    
-    See QUICK-FIX.md for setup instructions.
-  `;
-  console.error(errorMsg);
-  throw new Error('Missing Supabase environment variables. Check .env file and see QUICK-FIX.md');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-});
-
-console.log('✅ Supabase client initialized successfully');
-
-// Test connection on initialization
-supabase.auth.getSession().then(({ data, error }) => {
-  if (error) {
-    console.error('❌ Supabase connection test failed:', error.message);
-    toast.error('Failed to connect to Supabase. Check console for details.');
-  } else {
-    console.log('✅ Supabase connection test successful');
-  }
-}).catch(err => {
-  console.error('❌ Supabase connection error:', err);
-  toast.error('Network error: Cannot connect to Supabase. Check your internet connection and project status.');
-});
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Auth helpers
 export const signUp = async (email: string, password: string, role: 'user' | 'vendor' | 'admin' = 'user') => {
   try {
+    // Extract name from email for default display name
     const defaultName = email.split('@')[0];
     const displayName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
     
@@ -65,6 +28,7 @@ export const signUp = async (email: string, password: string, role: 'user' | 've
     
     if (error) throw error;
     
+    // Try to create profile record, but don't fail if table doesn't exist
     if (data.user) {
       try {
         const profileData = {
@@ -73,6 +37,7 @@ export const signUp = async (email: string, password: string, role: 'user' | 've
           full_name: displayName,
           role: role,
           created_at: new Date().toISOString(),
+          // Add role-specific default settings
           preferences: role === 'vendor' ? 
             { showInMap: true, allowContactByEmail: true } : 
             { language: 'english', notifications: true }
@@ -82,6 +47,7 @@ export const signUp = async (email: string, password: string, role: 'user' | 've
         console.log('Profile created successfully');
       } catch (profileError) {
         console.warn('Could not create profile record (this is okay for testing):', profileError);
+        // Don't throw here - auth signup was successful
       }
     }
     
@@ -148,6 +114,7 @@ export const getCurrentUser = async () => {
   }
 };
 
+// User profile helpers
 export const getUserProfile = async (userId: string) => {
   try {
     const { data, error } = await supabase
@@ -173,18 +140,21 @@ export const updateUserProfile = async (userId: string, updates: Partial<UserPro
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Profile updated successfully');
     return { data, error: null };
   } catch (error) {
     console.error('Error updating user profile:', error);
+    // Show error toast
     toast.error('Failed to update profile');
     return { data: null, error };
   }
 };
 
-// Rest of the helper functions...
+// Vendor helpers
 export const getVendors = async (limit = 20, filter?: string) => {
   try {
+    // First get the vendors
     let query = supabase
       .from('vendors')
       .select('*');
@@ -209,6 +179,7 @@ export const getVendors = async (limit = 20, filter?: string) => {
       return { data: [], error: null };
     }
     
+    // For each vendor, fetch their products
     const vendorsWithProducts = await Promise.all(
       vendors.map(async (vendor) => {
         const { data: products } = await supabase
@@ -239,6 +210,8 @@ export const getVendorsByLocation = async (lat: number, lng: number, radiusKm = 
     
     if (error) throw error;
     
+    // Filter by distance on the client side (simplified)
+    // In production, this would be better done in the database with PostGIS
     const filteredVendors = data?.filter(vendor => {
       if (!vendor.location) return false;
       const distance = calculateDistance(
@@ -255,8 +228,9 @@ export const getVendorsByLocation = async (lat: number, lng: number, radiusKm = 
   }
 };
 
+// Simple haversine formula for distance calculation
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371;
+  const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);
   const a = 
@@ -264,7 +238,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
     Math.sin(dLon/2) * Math.sin(dLon/2); 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  const d = R * c;
+  const d = R * c; // Distance in km
   return d;
 };
 
@@ -274,6 +248,7 @@ const deg2rad = (deg: number): number => {
 
 export const getVendorById = async (id: string) => {
   try {
+    // First fetch the vendor data
     const { data: vendorData, error: vendorError } = await supabase
       .from('vendors')
       .select('*')
@@ -282,6 +257,7 @@ export const getVendorById = async (id: string) => {
       
     if (vendorError) throw vendorError;
     
+    // Then fetch the products for this vendor
     const { data: productsData, error: productsError } = await supabase
       .from('products')
       .select('*')
@@ -289,8 +265,10 @@ export const getVendorById = async (id: string) => {
     
     if (productsError) {
       console.error('Error fetching products:', productsError);
+      // Continue even if products fetch fails
     }
     
+    // Combine vendor data with products
     const vendorWithProducts = {
       ...vendorData,
       products: productsData || []
@@ -314,10 +292,12 @@ export const createVendor = async (vendorData: Partial<Vendor>) => {
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Vendor created successfully');
     return { data, error: null };
   } catch (error) {
     console.error('Error creating vendor:', error);
+    // Show error toast
     toast.error('Failed to create vendor');
     return { data: null, error };
   }
@@ -334,15 +314,18 @@ export const updateVendor = async (id: string, updates: Partial<Vendor>) => {
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Vendor updated successfully');
     return { data, error: null };
   } catch (error) {
     console.error('Error updating vendor:', error);
+    // Show error toast
     toast.error('Failed to update vendor');
     return { data: null, error };
   }
 };
 
+// Product helpers
 export const getProducts = async (vendorId: string) => {
   try {
     const { data, error } = await supabase
@@ -368,10 +351,12 @@ export const createProduct = async (productData: Partial<Product>) => {
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Product added successfully');
     return { data, error: null };
   } catch (error) {
     console.error('Error creating product:', error);
+    // Show error toast
     toast.error('Failed to add product');
     return { data: null, error };
   }
@@ -388,10 +373,12 @@ export const updateProduct = async (id: string, updates: Partial<Product>) => {
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Product updated successfully');
     return { data, error: null };
   } catch (error) {
     console.error('Error updating product:', error);
+    // Show error toast
     toast.error('Failed to update product');
     return { data: null, error };
   }
@@ -406,17 +393,22 @@ export const deleteProduct = async (id: string) => {
       
     if (error) throw error;
     
+    // Show success toast
     toast.success('Product deleted successfully');
     return { error: null };
   } catch (error) {
     console.error('Error deleting product:', error);
+    // Show error toast
     toast.error('Failed to delete product');
     return { error };
   }
 };
 
+// Admin notification system
+// Admin notification functions
 export const createAdminNotification = async (type: string, message: string, data: Record<string, unknown>) => {
   try {
+    // First, find all admin users
     const { data: adminUsers, error: adminError } = await supabase
       .from('profiles')
       .select('id')
@@ -429,6 +421,7 @@ export const createAdminNotification = async (type: string, message: string, dat
       return { success: false, error: 'No admin users found' };
     }
     
+    // Create notifications for each admin
     const notifications = adminUsers.map(admin => ({
       user_id: admin.id,
       type,
@@ -451,6 +444,7 @@ export const createAdminNotification = async (type: string, message: string, dat
   }
 };
 
+// Create notification for a specific user (e.g., vendor)
 export const createUserNotification = async (userId: string, type: string, message: string, data: Record<string, unknown> = {}) => {
   try {
     const notification = {
@@ -479,16 +473,19 @@ export const getAdminNotifications = async (userId: string) => {
   try {
     console.log('Fetching notifications for admin user:', userId);
     
+    // First check if the notifications table exists
     const { error: tableCheckError } = await supabase
       .from('notifications')
       .select('count')
       .limit(1);
       
+    // If there's an error like table doesn't exist, return empty array
     if (tableCheckError) {
       console.log('Notifications table may not exist:', tableCheckError.message);
       return { data: [], error: null };
     }
     
+    // If table exists, fetch notifications
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -499,6 +496,7 @@ export const getAdminNotifications = async (userId: string) => {
     return { data: data || [], error: null };
   } catch (error) {
     console.error('Error fetching admin notifications:', error);
+    // Return empty array instead of null to prevent further errors
     return { data: [], error };
   }
 };
@@ -518,6 +516,7 @@ export const markNotificationAsRead = async (notificationId: string) => {
   }
 };
 
+// Admin helpers
 export const getPendingVendors = async () => {
   try {
     const { data, error } = await supabase
@@ -538,6 +537,7 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
   try {
     console.log(`Updating vendor ${id} status to ${status}`);
     
+    // First get the vendor to find the owner_id and name
     const { data: vendor, error: vendorError } = await supabase
       .from('vendors')
       .select('*')
@@ -556,6 +556,8 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
     
     console.log(`Found vendor: ${vendor.name} with owner ID: ${vendor.owner_id}`);
     
+    // Update the vendor verification status
+    // Only update the verification_status field, verified_at doesn't exist in the schema
     const { data, error } = await supabase
       .from('vendors')
       .update({ verification_status: status })
@@ -568,11 +570,14 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
     
     console.log('Vendor status updated successfully');
     
+    // Only update profile if status is changing to verified or rejected
     if (vendor?.owner_id && (status === 'verified' || status === 'rejected')) {
+      // Set the new role based on status
       const newRole = status === 'verified' ? 'vendor' : 'user';
       console.log(`Setting user ${vendor.owner_id} role to ${newRole}`);
       
       try {
+        // Update profile role with updated_at timestamp
         console.log(`Updating profile for user ${vendor.owner_id} to role: ${newRole}`);
         const { error: profileError } = await supabase
           .from('profiles')
@@ -584,13 +589,16 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
           
         if (profileError) {
           console.error('Error updating user profile role:', profileError);
+          // Continue even if profile update fails
         } else {
           console.log(`Successfully updated profile role to ${newRole}`);
         }
       } catch (profileUpdateError) {
         console.error('Exception during profile update:', profileUpdateError);
+        // Continue even if profile update fails
       }
       
+      // Simplify auth metadata update
       try {
         console.log(`Updating auth metadata for user ${vendor.owner_id} to role: ${newRole}`);
         const { error: authError } = await supabase.auth.updateUser({
@@ -604,8 +612,10 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
         }
       } catch (authUpdateError) {
         console.error('Exception during auth metadata update:', authUpdateError);
+        // Continue even if auth update fails
       }
       
+      // Send notification to the vendor about their application status
       if (status === 'verified') {
         await createUserNotification(
           vendor.owner_id,
@@ -623,28 +633,35 @@ export const updateVendorVerification = async (id: string, status: 'pending' | '
       }
     }
     
+    // Show success toast
     toast.success(`Vendor ${status === 'verified' ? 'approved' : status} successfully`);
     return { data, error: null };
   } catch (error: unknown) {
     console.error('Error updating vendor verification:', error);
+    // Show error toast with specific message
     const errorMessage = error instanceof Error ? error.message : 'Failed to update vendor status';
     toast.error(errorMessage);
     return { data: null, error };
   }
 };
 
+// File upload helpers
 export const uploadImage = async (filePath: string, file: File) => {
   try {
+    // Check if bucket exists, if not, create a fallback path
     let bucketName = 'vendor-documents';
     
+    // First check if the bucket exists
     const { data: buckets } = await supabase.storage.listBuckets();
     const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
     
+    // If bucket doesn't exist, use a default bucket
     if (!bucketExists) {
       console.log(`Bucket '${bucketName}' not found, using default bucket`);
-      bucketName = 'images';
+      bucketName = 'images'; // Fallback to default bucket
     }
     
+    // Upload the file
     const { data, error } = await supabase.storage
       .from(bucketName)
       .upload(filePath, file, {
@@ -657,6 +674,7 @@ export const uploadImage = async (filePath: string, file: File) => {
       throw error;
     }
     
+    // Get public URL
     const { data: publicURL } = supabase.storage
       .from(bucketName)
       .getPublicUrl(data.path);
@@ -664,6 +682,7 @@ export const uploadImage = async (filePath: string, file: File) => {
     return { url: publicURL.publicUrl, error: null };
   } catch (error) {
     console.error('Error uploading image:', error);
+    // For debugging, log more detailed error information
     if (error instanceof Error) {
       console.error('Error details:', error.message);
     }
@@ -671,8 +690,10 @@ export const uploadImage = async (filePath: string, file: File) => {
   }
 };
 
+// Favorites system
 export const toggleFavoriteVendor = async (userId: string, vendorId: string) => {
   try {
+    // First, get the current favorites
     const { data: profile, error: fetchError } = await supabase
       .from('profiles')
       .select('favorites')
@@ -681,14 +702,17 @@ export const toggleFavoriteVendor = async (userId: string, vendorId: string) => 
       
     if (fetchError) throw fetchError;
     
+    // If no favorites array, create one
     let favorites = profile?.favorites || [];
     
+    // Toggle the vendor in favorites
     if (favorites.includes(vendorId)) {
       favorites = favorites.filter(id => id !== vendorId);
     } else {
       favorites.push(vendorId);
     }
     
+    // Update the profile
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ favorites })
@@ -696,6 +720,7 @@ export const toggleFavoriteVendor = async (userId: string, vendorId: string) => 
       
     if (updateError) throw updateError;
     
+    // Update was successful
     const action = favorites.includes(vendorId) ? 'added to' : 'removed from';
     toast.success(`Vendor ${action} favorites`);
     
@@ -709,6 +734,7 @@ export const toggleFavoriteVendor = async (userId: string, vendorId: string) => 
 
 export const getFavoriteVendors = async (userId: string) => {
   try {
+    // First get the user's favorites list
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('favorites')
@@ -719,10 +745,12 @@ export const getFavoriteVendors = async (userId: string) => {
     
     const favorites = profile?.favorites || [];
     
+    // If no favorites, return empty array
     if (favorites.length === 0) {
       return { data: [], error: null };
     }
     
+    // Fetch all favorite vendors
     const { data, error } = await supabase
       .from('vendors')
       .select('*')
